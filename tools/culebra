@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
+r"""
 Copyright (C) 2013-2023  Diego Torres Milano
 Created on Mar 28, 2013
 
@@ -28,7 +28,7 @@ from typing import Pattern
 import culebratester_client
 from culebratester_client import WindowHierarchy, Selector
 
-__version__ = '23.0.1'
+__version__ = '24.1.0'
 
 import calendar
 import codecs
@@ -1295,7 +1295,7 @@ def getWindowOption():
 
 
 def printScriptHeader():
-    print(f'''{getShebangJar()}
+    print(rf'''{getShebangJar()}
 # -*- coding: utf-8 -*-
 """
 Copyright (C) 2013-2023  Diego Torres Milano

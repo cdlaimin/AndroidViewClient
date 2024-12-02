@@ -27,7 +27,7 @@ from typing import Optional
 
 from com.dtmilano.android.adb.dumpsys import Dumpsys
 
-__version__ = '23.0.1'
+__version__ = '24.1.0'
 
 import sys
 import warnings
@@ -614,7 +614,7 @@ class AdbClient:
     def getRestrictedScreen(self):
         ''' Gets C{mRestrictedScreen} values from dumpsys. This is a method to obtain display dimensions '''
 
-        rsRE = re.compile('\s*mRestrictedScreen=\((?P<x>\d+),(?P<y>\d+)\) (?P<w>\d+)x(?P<h>\d+)')
+        rsRE = re.compile(r'\s*mRestrictedScreen=\((?P<x>\d+),(?P<y>\d+)\) (?P<w>\d+)x(?P<h>\d+)')
         for line in self.shell('dumpsys window').splitlines():
             m = rsRE.match(line)
             if m:
@@ -670,7 +670,7 @@ class AdbClient:
         ''' Gets C{mPhysicalDisplayInfo} values from dumpsys. This is a method to obtain display dimensions and density'''
 
         self.__checkTransport()
-        phyDispRE = re.compile('Physical size: (?P<width>\d+)x(?P<height>\d+).*Physical density: (?P<density>\d+)',
+        phyDispRE = re.compile(r'Physical size: (?P<width>\d+)x(?P<height>\d+).*Physical density: (?P<density>\d+)',
                                re.DOTALL)
         m = phyDispRE.search(self.shell('wm size; wm density'))
         if m:
@@ -682,7 +682,7 @@ class AdbClient:
             return displayInfo
 
         phyDispRE = re.compile(
-            '.*PhysicalDisplayInfo{(?P<width>\d+) x (?P<height>\d+), .*, density (?P<density>[\d.]+).*')
+            r'.*PhysicalDisplayInfo{(?P<width>\d+) x (?P<height>\d+), .*, density (?P<density>[\d.]+).*')
         for line in self.shell('dumpsys display').splitlines():
             m = phyDispRE.search(line, 0)
             if m:
@@ -695,9 +695,9 @@ class AdbClient:
                 return displayInfo
 
         # This could also be mSystem or mOverscanScreen
-        phyDispRE = re.compile('\s*mUnrestrictedScreen=\((?P<x>\d+),(?P<y>\d+)\) (?P<width>\d+)x(?P<height>\d+)')
+        phyDispRE = re.compile(r'\s*mUnrestrictedScreen=\((?P<x>\d+),(?P<y>\d+)\) (?P<width>\d+)x(?P<height>\d+)')
         # This is known to work on older versions (i.e. API 10) where mrestrictedScreen is not available
-        dispWHRE = re.compile('\s*DisplayWidth=(?P<width>\d+) *DisplayHeight=(?P<height>\d+)')
+        dispWHRE = re.compile(r'\s*DisplayWidth=(?P<width>\d+) *DisplayHeight=(?P<height>\d+)')
         for line in self.shell('dumpsys window').splitlines():
             m = phyDispRE.search(line, 0)
             if not m:
@@ -743,7 +743,7 @@ class AdbClient:
             return displayInfo['orientation']
         # Fallback method to obtain the orientation
         # See https://github.com/dtmilano/AndroidViewClient/issues/128
-        surfaceOrientationRE = re.compile('SurfaceOrientation:\s+(\d+)')
+        surfaceOrientationRE = re.compile(r'SurfaceOrientation:\s+(\d+)')
         output = self.shell('dumpsys input')
         m = surfaceOrientationRE.search(output)
         if m:
@@ -1023,8 +1023,8 @@ class AdbClient:
             output_type = pytesseract.Output.DICT
         return pytesseract.image_to_data(image, output_type=output_type)
 
-    def __transformPointByOrientation(self, xxx_todo_changeme, orientationOrig, orientationDest):
-        (x, y) = xxx_todo_changeme
+    def __transformPointByOrientation(self, initPoint, orientationOrig, orientationDest):
+        (x, y) = initPoint
         if orientationOrig != orientationDest:
             if orientationDest == 1:
                 _x = x
@@ -1075,7 +1075,7 @@ class AdbClient:
         self.__checkTransport()
         self.drag((x, y), (x, y), duration, orientation)
 
-    def drag(self, xxx_todo_changeme1, xxx_todo_changeme2, duration, steps=1, orientation=-1):
+    def drag(self, startCoords, endCoords, duration, steps=1, orientation=-1):
         """
         Sends drag event in PX (actually it's using C{input swipe} command).
 
@@ -1085,8 +1085,8 @@ class AdbClient:
         @param steps: number of steps (currently ignored by C{input swipe})
         @param orientation: the orientation (-1: undefined)
         """
-        (x0, y0) = xxx_todo_changeme1
-        (x1, y1) = xxx_todo_changeme2
+        (x0, y0) = startCoords
+        (x1, y1) = endCoords
         self.__checkTransport()
         if orientation == -1:
             orientation = self.display['orientation']
@@ -1101,7 +1101,7 @@ class AdbClient:
         else:
             self.shell('input touchscreen swipe %d %d %d %d %d' % (x0, y0, x1, y1, duration))
 
-    def dragDip(self, xxx_todo_changeme3, xxx_todo_changeme4, duration, steps=1, orientation=-1):
+    def dragDip(self, startCoords, endCoords, duration, steps=1, orientation=-1):
         """
         Sends drag event in DIP (actually it's using C{input swipe} command.
 
@@ -1110,8 +1110,8 @@ class AdbClient:
         @param duration: duration of the event in ms
         @param steps: number of steps (currently ignored by C{input swipe})
         """
-        (x0, y0) = xxx_todo_changeme3
-        (x1, y1) = xxx_todo_changeme4
+        (x0, y0) = startCoords
+        (x1, y1) = endCoords
         self.__checkTransport()
         if orientation == -1:
             orientation = self.display['orientation']
@@ -1338,21 +1338,21 @@ class AdbClient:
         dww = self.shell('dumpsys window windows')
         if DEBUG_WINDOWS: print(dww, file=sys.stderr)
         lines = dww.splitlines()
-        widRE = re.compile('^ *Window #%s Window\{%s (u\d+ )?%s?.*\}:' %
+        widRE = re.compile(r'^ *Window #%s Window\{%s (u\d+ )?%s?.*\}:' %
                            (_nd('num'), _nh('winId'), _ns('activity', greedy=True)))
-        currentFocusRE = re.compile('^  mCurrentFocus=Window\{%s .*' % _nh('winId'))
+        currentFocusRE = re.compile(r'^  mCurrentFocus=Window\{%s .*' % _nh('winId'))
         viewVisibilityRE = re.compile(' mViewVisibility=0x%s ' % _nh('visibility'))
         # This is for 4.0.4 API-15
-        containingFrameRE = re.compile('^   *mContainingFrame=\[%s,%s\]\[%s,%s\] mParentFrame=\[%s,%s\]\[%s,%s\]' %
+        containingFrameRE = re.compile(r'^   *mContainingFrame=\[%s,%s\]\[%s,%s\] mParentFrame=\[%s,%s\]\[%s,%s\]' %
                                        (_nd('cx'), _nd('cy'), _nd('cw'), _nd('ch'), _nd('px'), _nd('py'), _nd('pw'),
                                         _nd('ph')))
-        contentFrameRE = re.compile('^   *mContentFrame=\[%s,%s\]\[%s,%s\] mVisibleFrame=\[%s,%s\]\[%s,%s\]' %
+        contentFrameRE = re.compile(r'^   *mContentFrame=\[%s,%s\]\[%s,%s\] mVisibleFrame=\[%s,%s\]\[%s,%s\]' %
                                     (_nd('x'), _nd('y'), _nd('w'), _nd('h'), _nd('vx'), _nd('vy'), _nd('vx1'),
                                      _nd('vy1')))
         # This is for 4.1 API-16
-        framesRE = re.compile('^   *Frames: containing=\[%s,%s\]\[%s,%s\] parent=\[%s,%s\]\[%s,%s\]' %
+        framesRE = re.compile(r'^   *Frames: containing=\[%s,%s\]\[%s,%s\] parent=\[%s,%s\]\[%s,%s\]' %
                               (_nd('cx'), _nd('cy'), _nd('cw'), _nd('ch'), _nd('px'), _nd('py'), _nd('pw'), _nd('ph')))
-        contentRE = re.compile('^     *content=\[%s,%s\]\[%s,%s\] visible=\[%s,%s\]\[%s,%s\]' %
+        contentRE = re.compile(r'^     *content=\[%s,%s\]\[%s,%s\] visible=\[%s,%s\]\[%s,%s\]' %
                                (_nd('x'), _nd('y'), _nd('w'), _nd('h'), _nd('vx'), _nd('vy'), _nd('vx1'), _nd('vy1')))
         policyVisibilityRE = re.compile('mPolicyVisibility=%s ' % _ns('policyVisibility', greedy=True))
 
@@ -1463,7 +1463,7 @@ class AdbClient:
 
     def getTopActivityNameAndPid(self):
         dat = self.shell('dumpsys activity top')
-        activityRE = re.compile('\s*ACTIVITY ([A-Za-z0-9_.]+)/([A-Za-z0-9_.\$]+) \w+ pid=(\d+)')
+        activityRE = re.compile(r'\s*ACTIVITY ([A-Za-z0-9_.]+)/([A-Za-z0-9_.\$]+) \w+ pid=(\d+)')
         m = activityRE.findall(dat)
         if len(m) > 0:
             return m[-1]

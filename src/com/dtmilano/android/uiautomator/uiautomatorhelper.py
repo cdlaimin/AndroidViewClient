@@ -20,8 +20,9 @@ limitations under the License.
 
 from __future__ import print_function
 
-__version__ = '23.0.1'
+__version__ = '24.1.0'
 
+import math
 import os
 import platform
 import re
@@ -32,11 +33,11 @@ import time
 import warnings
 from abc import ABC
 from datetime import datetime
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Union
 
 import culebratester_client
 from culebratester_client import Text, ObjectRef, DefaultApi, Point, PerformTwoPointerGestureBody, \
-    BooleanResponse, NumberResponse, StatusResponse, StringResponse
+    BooleanResponse, NumberResponse, StatusResponse, StringResponse, Rect
 
 from com.dtmilano.android.adb.adbclient import AdbClient
 from com.dtmilano.android.common import obtainAdbPath
@@ -258,9 +259,9 @@ class UiAutomatorHelper:
             self.uiAutomatorHelper = uiAutomatorHelper
 
         @staticmethod
-        def intersection(l1: list, l2: list) -> list:
+        def intersection(l1: Union[list, tuple], l2: Union[list, tuple]) -> list:
             """
-            Obtains the intersection between the two lists.
+            Obtains the intersection between the two lists or tuples.
 
             :param l1: list 1
             :type l1: list
@@ -271,7 +272,7 @@ class UiAutomatorHelper:
             """
             return list(set(l1) & set(l2))
 
-        def some(self, l1: list, l2: list) -> bool:
+        def some(self, l1: Union[list, tuple], l2: Union[list, tuple]) -> bool:
             """
             Some elements are in both lists.
 
@@ -284,7 +285,7 @@ class UiAutomatorHelper:
             """
             return len(self.intersection(l1, l2)) > 0
 
-        def all(self, l1: list, l2: list) -> bool:
+        def all(self, l1: Union[list, tuple], l2: Union[list, tuple]) -> bool:
             """
             All the elements are in both lists.
 
@@ -316,6 +317,22 @@ class UiAutomatorHelper:
             :return: the display real size
             """
             return self.uiAutomatorHelper.api_instance.device_display_real_size_get()
+
+        def display_physical_size(self):
+            """
+            Gets the physical width, height and diagonal
+            :return: physical width, height and diagonal
+            :rtype: dict
+            """
+            drs = self.uiAutomatorHelper.api_instance.device_display_real_size_get()
+            display = self.dumpsys("display")
+            m = re.search(r"density (\d+), ([\d.]+) x ([\d.]+) dpi", display)
+            assert len(m.groups()) == 3
+            density, xdpi, ydpi = m.groups()
+            pw = drs.x / float(xdpi)
+            ph = drs.y / float(xdpi)
+            diag = math.sqrt(pw * pw + ph * ph)
+            return {"physical_width": round(pw, 2), "physical_height": round(ph, 2), "screen": round(diag, 2)}
 
         def dumpsys(self, service, **kwargs) -> str:
             """
@@ -449,6 +466,34 @@ class UiAutomatorHelper:
             """
             check_response(self.uiAutomatorHelper.api_instance.ui_device_click_get(x=x, y=y))
 
+        def display_size_dp(self):
+            """
+            Returns the default display size in dp (device-independent pixel).
+
+            The returned display size is adjusted per screen rotation. Also this will return the actual size of the
+            screen, rather than adjusted per system decorations (like status bar).
+            :return: the DPs
+            :rtype:
+            """
+            return self.uiAutomatorHelper.api_instance.ui_device_display_size_dp_get()
+
+        def drag(self, start_x: int, start_y: int, end_x: int, end_y: int, steps: int) -> None:
+            """Performs a swipe from one coordinate to another coordinate.
+
+            Performs a swipe from one coordinate to another coordinate. You can control the smoothness and speed of the
+            swipe by specifying the number of steps. Each step execution is throttled to 5 milliseconds per step,
+            so for 100 steps, the swipe will take around 0.5 seconds to complete.
+
+            :see https://github.com/dtmilano/CulebraTester2-public/blob/master/openapi.yaml
+            :param int start_x: from x (required)
+            :param int start_y: from y (required)
+            :param int end_x: to x (required)
+            :param int end_y: end y (required)
+            :param int steps: is the number of move steps sent to the system (required)
+            """
+            check_response(
+                self.uiAutomatorHelper.api_instance.ui_device_drag_get(start_x, start_y, end_x, end_y, steps))
+
         def dump_window_hierarchy(self, _format='JSON'):
             """
             Dumps the window hierarchy.
@@ -505,7 +550,7 @@ class UiAutomatorHelper:
             """
             if 'body' in kwargs:
                 return self.uiAutomatorHelper.api_instance.ui_device_has_object_post(**kwargs).value
-            if self.some(['resource_id', 'ui_selector', 'by_selector'], kwargs):
+            if self.some(('resource_id', 'ui_selector', 'by_selector'), tuple(kwargs.keys())):
                 return self.uiAutomatorHelper.api_instance.ui_device_has_object_get(**kwargs).value
             body = culebratester_client.Selector(**kwargs)
             return self.uiAutomatorHelper.api_instance.ui_device_has_object_post(body=body).value
@@ -566,7 +611,7 @@ class UiAutomatorHelper:
             :param kwargs:
             :return:
             """
-            if self.all(['start_x', 'start_y', 'end_x', 'end_y', 'steps'], kwargs):
+            if self.all(('start_x', 'start_y', 'end_x', 'end_y', 'steps'), tuple(kwargs.keys())):
                 check_response(self.uiAutomatorHelper.api_instance.ui_device_swipe_get(**kwargs))
                 return
             if 'segments' in kwargs:
@@ -695,15 +740,58 @@ class UiAutomatorHelper:
             :param oid: the oid
             :return: the content description
             """
-            response: StringResponse = self.uiAutomatorHelper.api_instance.ui_object2_oid_get_content_description_get(
+            response: StringResponse = self.uiAutomatorHelper.api_instance.ui_object_oid_get_content_description_get(
                 oid=oid)
             return response.value
+
+        def get_bounds(self, oid: int) -> Tuple[int, int, int, int]:
+            """
+            Gets the view's bounds property.  # noqa: E501
+            :see https://github.com/dtmilano/CulebraTester2-public/blob/master/openapi.yaml
+
+            :param oid:
+            :type oid:
+            :return:
+            :rtype:
+            """
+            rect: Rect = self.uiAutomatorHelper.api_instance.ui_object_oid_get_bounds_get(oid=oid)
+            return rect.left, rect.top, rect.right, rect.bottom
+
+        def get_child(self, oid: int, ui_selector: str) -> ObjectRef:
+            """
+            Creates a new UiObject for a child view that is under the present UiObject.
+            :see https://github.com/dtmilano/CulebraTester2-public/blob/master/openapi.yaml
+
+            :param oid: The oid
+            :type oid: int
+            :param ui_selector:
+            :type ui_selector:
+            :return:
+            :rtype: ObjectRef
+            """
+            return self.uiAutomatorHelper.api_instance.ui_object_oid_get_child(oid, ui_selector=ui_selector)
+
+        def get_from_parent(self, oid: int, ui_selector: str) -> ObjectRef:
+            """
+            Creates a new UiObject for a sibling view or a child of the sibling view, relative to the present UiObject.
+            :see https://github.com/dtmilano/CulebraTester2-public/blob/master/openapi.yaml
+
+            :param oid: The oid
+            :type oid: int
+            :param ui_selector:
+            :type ui_selector:
+            :return:
+            :rtype: ObjectRef
+            """
+            return self.uiAutomatorHelper.api_instance.ui_object_oid_get_from_parent_get(oid,
+                                                                                         ui_selector=ui_selector)
 
         def perform_two_pointer_gesture(self, oid: int, startPoint1: Tuple[int, int], startPoint2: Tuple[int, int],
                                         endPoint1: Tuple[int, int], endPoint2: Tuple[int, int], steps: int) -> None:
             """
             Generates a two-pointer gesture with arbitrary starting and ending points.
             :see https://github.com/dtmilano/CulebraTester2-public/blob/master/openapi.yaml
+
             :param oid: the oid
             :param startPoint1:
             :param startPoint2:
